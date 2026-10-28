@@ -384,7 +384,7 @@ table.mini tbody tr:first-child td{border-top:0}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 /* =========================================================
-   KESTREL BUTTONS CRM — v1.2 (Supabase connected; users, teams and access requests)
+   KESTREL BUTTONS CRM — v1.3 (Supabase connected; users, teams and access requests; Admin test team)
    Structure:
    1. Constants & helpers
    2. Fictional data (DB)            <- replace with real storage later
@@ -405,7 +405,9 @@ const WINDOW_MONTHS = [5,4,3,2,1,0].map(b => monthKey(TODAY, b));
 const WINDOW_START = WINDOW_MONTHS[0] + '-01';
 const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const SOURCES = ['Online','Expo exhibitor','Event visitor','Referral','Management network'];
-const NQ_REASONS = ['Not suitable','Other'];   // Duplicate is handled separately: it is not a qualification outcome
+const NQ_REASONS = ['Not suitable','Duplicate','Other'];   // Duplicate links to the existing record and is left out of the qualification rate
+const isDupLead = l => l.status==='Not Qualified' && l.reason==='Duplicate';
+const nqText = l => l.reason==='Duplicate' && l.duplicateOf ? `Not qualified: Duplicate of ${l.duplicateOf.type} ${l.duplicateOf.id}` : `Not qualified: ${l.reason}`;
 const LOSS_REASONS = ['Price','MOQ','Lead Time','Quality','Customer Cancelled','Competitor','Other'];
 const PROBLEM_TYPES = ['Late Delivery','Wrong Item','Wrong Quantity','Quality Issue','Specification Mismatch','Other'];
 const ADDRESS_TYPES = ['Head office','Billing','Delivery','Factory','Warehouse'];
@@ -560,7 +562,7 @@ const DB = {
     { id:'L-501', createdAt:'2026-08-06', createdBy:MP, company:'Andes Textil S.A.C.', source:'Expo exhibitor', country:'Peru', contactName:'Mateo Quispe', email:'mquispe@andestextil.example', phone:'+51 987 220 145', needs:'Polyester and metal buttons for uniforms', teamId:'T3', status:'Qualified', assessment:'Uniform manufacturer, ~2M pcs/yr. Fits polyester and metal ranges.', accountId:'A1013', qualifiedBy:RL, qualifiedAt:'2026-08-08', assignedBy:RL, assignedAt:'2026-08-08' },
     { id:'L-505', createdAt:'2026-08-19', createdBy:WEB, company:'QuickPromo Gifts', source:'Online', country:'United States', contactName:'', email:'orders@quickpromo.example', phone:'', needs:'Printed promo badges', status:'Not Qualified', reason:'Not suitable', assessment:'Promotional badges, not garment trims.', qualifiedBy:RL, qualifiedAt:'2026-08-20' },
     { id:'L-506', createdAt:'2026-08-12', createdBy:RL, company:'Harbour Tailoring House', source:'Management network', country:'Australia', contactName:'Oliver Grant', email:'oliver@harbourtailoring.example', phone:'', needs:'Horn-effect buttons for overcoats', teamId:'T2', status:'Qualified', assessment:'Premium tailor, small volume but high margin.', accountId:'A1009', qualifiedBy:RL, qualifiedAt:'2026-08-14', assignedBy:RL, assignedAt:'2026-08-14' },
-    { id:'L-507', createdAt:'2026-09-03', createdBy:MP, company:'Seoul Knit Studio', source:'Expo exhibitor', country:'South Korea', contactName:'Ji-woo Park', email:'jiwoo.park@seoulknit.example', phone:'', needs:'Knitwear buttons', status:'Duplicate', duplicateOf:{ type:'account', id:'A1007' }, assessment:'Same company as existing account A1007, already managed by Team Asia-Pacific.', resolvedBy:RL, resolvedAt:'2026-09-04' },
+    { id:'L-507', createdAt:'2026-09-03', createdBy:MP, company:'Seoul Knit Studio', source:'Expo exhibitor', country:'South Korea', contactName:'Ji-woo Park', email:'jiwoo.park@seoulknit.example', phone:'', needs:'Knitwear buttons', status:'Not Qualified', reason:'Duplicate', duplicateOf:{ type:'account', id:'A1007' }, assessment:'Same company as existing account A1007, already managed by Team Asia-Pacific.', qualifiedBy:RL, qualifiedAt:'2026-09-04' },
     { id:'L-510', createdAt:'2026-09-15', createdBy:RL, company:'Bergen Outdoor', source:'Management network', country:'Norway', contactName:'', email:'', phone:'+47 55 30 12 00', needs:'Unclear', status:'Not Qualified', reason:'Other', assessment:'Contact left the company. No buyer identified.', qualifiedBy:RL, qualifiedAt:'2026-09-18' },
     { id:'L-511', createdAt:'2026-10-08', createdBy:CD, company:'Lyon Couture Atelier', source:'Referral', country:'France', contactName:'Élodie Martin', email:'elodie@lyoncouture.example', phone:'+33 4 78 37 21 90', needs:'Fabric-covered and shell buttons for bridal', status:'Pending Qualification' },
     { id:'L-512', createdAt:'2026-10-12', createdBy:MP, company:'Busan Marine Apparel', source:'Expo exhibitor', country:'South Korea', contactName:'Min-jun Kim', email:'', phone:'+82 51 744 2290', needs:'Corrosion-resistant snaps for marine jackets', status:'Pending Qualification' },
@@ -641,10 +643,16 @@ DB.leads.forEach(l => {
   const h = [{ at:l.createdAt, by:l.createdBy, action:'Submitted to Management queue' }];
   if(l.assignedBy) h.push({ at:l.assignedAt, by:l.assignedBy, action:`Assigned to ${tn(l.teamId)}` });
   if(l.status==='Qualified') h.push({ at:l.qualifiedAt, by:l.qualifiedBy, action:`Qualified. Account ${l.accountId} created for ${tn(l.teamId)}` });
-  if(l.status==='Not Qualified') h.push({ at:l.qualifiedAt, by:l.qualifiedBy, action:`Not qualified: ${l.reason}` });
-  if(l.status==='Duplicate') h.push({ at:l.resolvedAt, by:l.resolvedBy, action:`Resolved as duplicate of ${l.duplicateOf.type==='account' ? 'account' : 'lead'} ${l.duplicateOf.id}` });
+  if(l.status==='Not Qualified') h.push({ at:l.qualifiedAt, by:l.qualifiedBy, action:nqText(l) });
   l.history = h;
 });
+
+/* Admin test team (v1.3): fake records that only Admin sees and works on. Never in Management's or Sales' screens or reports. */
+DB.teams.push({ id:'SANDBOX', name:'Admin test team', status:'Active', sandbox:true });
+DB.accounts.push({ id:'TEST-A1', name:'Test Company (Admin test)', country:'VN', phone:'+84 28 0000 0000', status:'Active', teamId:'SANDBOX', source:'Referral',
+  createdBy:U('Ana Costa','Admin'), createdAt:'2026-10-28', notes:'Fake account for testing. Not a customer.', nextContact:'2026-11-03', nextAction:'Test follow-up: call the test contact',
+  addresses:[], contacts:[C('Test Contact','Buyer (test)','test.contact@example.com','+84 90 000 0000','',U('Ana Costa','Admin'),'2026-10-28')] });
+DB.opps.push({ id:'TEST-O1', accountId:'TEST-A1', name:'Test opportunity', date:'2026-10-28', details:'Fake opportunity for testing samples, orders and outcomes.', status:'Open' });
 
 /* ---------- 3. App state, simulated user & permissions ---------- */
 const S = {
@@ -658,7 +666,10 @@ const S = {
 };
 const ROLE_LABEL = { admin:'Admin', mgmt:'Management', sales:'Sales Team', submitter:'Lead Submitter' };
 const isM = () => S.role==='mgmt', isS = () => S.role==='sales', isA = () => S.role==='admin';
-const isV = () => isM() || isA();   // Admin and Management view all teams' records; neither edits them
+const isV = () => isM();   // Management views all real teams' records and edits none
+const isWorker = () => isS() || isA();   // works inside one team: Sales in their own team, Admin in the Admin test team
+const realTeams = () => DB.teams.filter(t => !t.sandbox);
+const sandboxTeam = () => DB.teams.find(t => t.sandbox);
 const team = id => DB.teams.find(t => t.id===id);
 const acc  = id => DB.accounts.find(a => a.id===id);
 const opp  = id => DB.opps.find(o => o.id===id);
@@ -672,8 +683,8 @@ function currentUser(){
   const p = person(S.member);
   return p ? U(p.name, ROLE_NAMES[p.role]) : U('(no member)','Sales');
 }
-const canSeeAccount = a => a && (isV() || (isS() && a.teamId===S.teamId));
-const canSeeLead    = l => l && (isV() || (isS() && !!l.teamId && l.teamId===S.teamId));
+const canSeeAccount = a => a && ((isV() && !team(a.teamId)?.sandbox) || (isWorker() && a.teamId===S.teamId));
+const canSeeLead    = l => l && (isV() || (isWorker() && !!l.teamId && l.teamId===S.teamId));
 // Path A: every submitted lead (any user, Sales included) waits in the Management queue with no team
 const inMgmtQueue     = l => l.status===PENDING && !l.teamId;
 const canMgmtQualify  = l => isM() && inMgmtQueue(l);
@@ -683,11 +694,11 @@ const visAccounts = () => DB.accounts.filter(canSeeAccount);
 const visLeads    = () => DB.leads.filter(canSeeLead);
 const visOpps     = () => DB.opps.filter(o => canSeeAccount(acc(o.accountId)));
 const visProblems = () => DB.problems.filter(p => canSeeAccount(acc(p.accountId)));
-const canEditSales = () => isS();   // Accounts, Contacts, Opportunities, Problems, Samples, Orders, Next contact
+const canEditSales = () => isWorker();   // Accounts, Contacts, Opportunities, Problems, Samples, Orders, Next contact
 const NAV = [
   { id:'admin',     label:'Administration', icon:'users', roles:['admin'] },
   { id:'dashboard', label:'Dashboard',     icon:'dash', roles:['admin','mgmt','sales'] },
-  { id:'leads',     label:'Leads',         icon:'lead', roles:['admin','mgmt','sales'] },
+  { id:'leads',     label:'Leads',         icon:'lead', roles:['mgmt','sales'] },
   { id:'accounts',  label:'Accounts',      icon:'acct', roles:['admin','mgmt','sales'] },
   { id:'opps',      label:'Opportunities', icon:'opp',  roles:['admin','mgmt','sales'] },
   { id:'followups', label:'Follow-ups',    icon:'fu',   roles:['admin','mgmt','sales'] },
@@ -698,7 +709,7 @@ const NAV = [
 ];
 
 /* ---------- 4. Business rules ---------- */
-function leadDuplicateOf(l){ const n = norm(l.company); return n ? DB.leads.find(x => x.id!==l.id && x.status!=='Duplicate' && norm(x.company)===n) || null : null; }
+function leadDuplicateOf(l){ const n = norm(l.company); return n ? DB.leads.find(x => x.id!==l.id && !isDupLead(x) && norm(x.company)===n) || null : null; }
 const dupTargetText = d => d.type==='account' ? `account ${d.id} · ${acc(d.id)?.name||''}` : `lead ${d.id} · ${lead(d.id)?.company||''}`;
 function duplicateOf(company){ const n = norm(company); if(!n) return null; return DB.accounts.find(a => norm(a.name)===n) || null; }
 
@@ -744,7 +755,7 @@ function shell(inner){
     return `<button data-act="nav" data-arg="${n.id}" ${cur?'aria-current="page"':''}>${I[n.icon]}<span>${n.label}</span>${badge}</button>`;
   }).join('');
   const t = team(S.teamId), u = currentUser();
-  const sub = isM() ? 'All teams · view & allocate' : isA() ? 'All teams · view only' : isS() ? (t?.name || '') : 'Submit leads only';
+  const sub = isM() ? 'All teams · view & allocate' : isA() ? 'Users, teams · test records' : isS() ? (t?.name || '') : 'Submit leads only';
   return `<div class="shell">
     <aside class="side">
       <div class="brand">
@@ -752,7 +763,7 @@ function shell(inner){
         <div><div class="brand-name">Kestrel CRM</div><div class="brand-sub">Button Manufacturing</div></div>
       </div>
       <nav class="nav" aria-label="Main"><div class="nav-label">Workspace</div>${navItems}
-        ${S.role!=='submitter' ? `<div class="nav-label">Quick action</div><button data-act="modal" data-arg="lead">${I.plus}<span>Submit a Lead</span></button>` : ''}
+        ${!['submitter','admin'].includes(S.role) ? `<div class="nav-label">Quick action</div><button data-act="modal" data-arg="lead">${I.plus}<span>Submit a Lead</span></button>` : ''}
       </nav>
       <div class="side-foot">${isLive() ? `
         <div class="who"><div class="avatar">${initials(u.name)}</div><div><div>${esc(u.name)}</div><div class="sim-note">${esc(u.role)} · ${esc(sub)}</div></div></div>
@@ -762,7 +773,7 @@ function shell(inner){
           <select id="role-sel" data-act-change="role">
             ${Object.entries(ROLE_LABEL).map(([k,v]) => `<option value="${k}" ${S.role===k?'selected':''}>${v}</option>`).join('')}
           </select></div>
-        ${isS() ? `<div><label for="team-sel">Sales team</label><select id="team-sel" data-act-change="team">${DB.teams.map(t => `<option value="${t.id}" ${S.teamId===t.id?'selected':''}>${t.name}</option>`).join('')}</select></div>
+        ${isS() ? `<div><label for="team-sel">Sales team</label><select id="team-sel" data-act-change="team">${realTeams().map(t => `<option value="${t.id}" ${S.teamId===t.id?'selected':''}>${t.name}</option>`).join('')}</select></div>
           <div><label for="member-sel">Signed in as</label><select id="member-sel" data-act-change="member">${teamMembers(S.teamId).filter(p => p.status!=='Inactive').map(p => `<option value="${p.id}" ${S.member===String(p.id)?'selected':''}>${esc(p.name)} · ${p.role==='sales_manager' ? 'Manager' : 'Executive'}</option>`).join('')}</select></div>` : ''}
         <div class="who"><div class="avatar">${initials(u.name)}</div><div><div>${esc(u.name)}</div><div class="sim-note">${esc(u.role)} · ${esc(sub)}</div></div></div>
         <div class="sim-note">Role switching is a demo of permissions, not real sign-in.</div>
@@ -773,12 +784,12 @@ function shell(inner){
       <div class="proto-bar ${isLive() ? 'live' : ''}">${isLive()
         ? `<b>Live</b><span>Connected to Supabase (${esc(PROJECT_REF)}). What you see and change is controlled by the database for your role and team.</span>`
         : `<b>Demo</b><span>Fictional data only. Roles are a demonstration, not real sign-in. Samples and orders are manual records, not linked to an ERP.</span>`}<span class="save-wrap" id="save-status">${saveStatusHTML()}</span></div>
-      <main class="content">${inner}</main>
+      <main class="content">${isA() && !['admin','profile'].includes(S.view) ? `<div class="infobox sim-box">${I.warn}<span><b>Admin test team.</b> Test records only, to reproduce what users report. Users and reports never see them, and real customer records are not shown here.</span></div>` : ''}${inner}</main>
     </div>
   </div>`;
 }
 
-const readOnlyChip = () => isV() ? `<span class="readonly">${I.eye}View only for ${isA() ? 'Admin' : 'Management'}</span>` : '';
+const readOnlyChip = () => isV() ? `<span class="readonly">${I.eye}View only for Management</span>` : '';
 const teamName = id => team(id)?.name.replace('Team ','') || '—';
 const barRow = (label, parts, val, max) => `<div class="bar-row"><span>${label}</span><div class="bar-track">${parts.map(([n,c]) => n ? `<div class="bar-fill ${c}" style="width:${n/max*100}%"></div>` : '').join('')}</div><span class="bar-val">${val}</span></div>`;
 
@@ -805,20 +816,20 @@ function problemItem(p, opts={}){
 function viewDashboard(){ return isV() ? dashMgmt() : dashSales(); }
 
 function dashMgmt(){
-  const L = DB.leads, decided = L.filter(l => ['Qualified','Not Qualified'].includes(l.status)), q = L.filter(l => l.status==='Qualified');
-  const O = DB.opps, won = O.filter(o => o.status==='Won'), lost = O.filter(o => o.status==='Lost'), open = O.filter(o => o.status==='Open');
+  const L = DB.leads, decided = L.filter(l => l.status==='Qualified' || (l.status==='Not Qualified' && !isDupLead(l))), q = L.filter(l => l.status==='Qualified');
+  const O = visOpps(), won = O.filter(o => o.status==='Won'), lost = O.filter(o => o.status==='Lost'), open = O.filter(o => o.status==='Open');
   const winRate = won.length + lost.length ? Math.round(won.length / (won.length + lost.length) * 100) : 0;
   const qRate = decided.length ? Math.round(q.length / decided.length * 100) : 0;
-  const probs = DB.problems.filter(p => p.status==='Open').sort((a,b) => a.date.localeCompare(b.date));
+  const probs = visProblems().filter(p => p.status==='Open').sort((a,b) => a.date.localeCompare(b.date));
 
-  const dupCount = L.filter(l => l.status==='Duplicate').length;
+  const dupCount = L.filter(isDupLead).length;
   const qRes = [['Pending qualification', L.filter(inMgmtQueue).length, 'warn'], ['Qualified', q.length, ''],
-    ...NQ_REASONS.map(r => [`Not qualified: ${r}`, L.filter(l => l.status==='Not Qualified' && l.reason===r).length, 'neutral'])];
+    ...NQ_REASONS.filter(r => r!=='Duplicate').map(r => [`Not qualified: ${r}`, L.filter(l => l.status==='Not Qualified' && l.reason===r).length, 'neutral'])];
   const qMax = Math.max(...qRes.map(x => x[1]), dupCount, 1);
   const qualRows = qRes.map(([l,n,c]) => barRow(l, [[n,c]], n, qMax)).join('')
-    + (dupCount ? `<div class="bar-sep">Not a qualification decision</div>${barRow('Resolved as duplicate', [[dupCount,'info']], dupCount, qMax)}` : '');
+    + (dupCount ? `<div class="bar-sep">Not a qualification decision</div>${barRow('Not qualified: Duplicate', [[dupCount,'info']], dupCount, qMax)}` : '');
 
-  const A = DB.accounts, aMax = Math.max(...SOURCES.map(s => A.filter(a => a.source===s).length), 1);
+  const A = visAccounts(), aMax = Math.max(...SOURCES.map(s => A.filter(a => a.source===s).length), 1);
   const since = WINDOW_START, newA = A.filter(a => a.createdAt >= since), newLead = newA.filter(a => a.leadId).length, newDirect = newA.length - newLead;
   // Each account counted once, by its own source and origin (leadId = created via a Management-qualified lead)
   const acqTotal = A.length, acqLead = A.filter(a => a.leadId).length, acqDirect = acqTotal - acqLead;
@@ -835,7 +846,7 @@ function dashMgmt(){
   const lossMax = Math.max(...lossCounts.map(x => x[1]), 1);
   const losses = lossCounts.map(([r,n]) => barRow(r, [[n,'bad']], n, lossMax)).join('');
 
-  const teamRows = DB.teams.map(t => {
+  const teamRows = realTeams().map(t => {
     const ac = A.filter(a => a.teamId===t.id), ids = ac.map(a => a.id);
     const to = O.filter(o => ids.includes(o.accountId)), w = to.filter(o=>o.status==='Won').length, l = to.filter(o=>o.status==='Lost').length;
     const od = ac.filter(a => a.status==='Active' && a.nextContact && dd(a.nextContact)<0).length;
@@ -847,7 +858,8 @@ function dashMgmt(){
       <td style="min-width:130px"><div style="display:flex;align-items:center;gap:8px"><div class="split" style="flex:1"><span class="c-won" style="width:${wr??0}%"></span><span class="c-lost" style="width:${wr===null?0:100-wr}%"></span></div><span class="mono">${wr===null?'—':wr+'%'}</span></div></td>
       <td class="num ${od?'due-over':''}">${od}</td><td class="num">${pr}</td></tr>`; }).join('');
 
-  const orderRows = DB.teams.map(t => { const ids = A.filter(a => a.teamId===t.id).map(a => a.id), os = DB.orders.filter(o => ids.includes(o.accountId));
+  const visOrders = DB.orders.filter(o => canSeeAccount(acc(o.accountId)));
+  const orderRows = realTeams().map(t => { const ids = A.filter(a => a.teamId===t.id).map(a => a.id), os = DB.orders.filter(o => ids.includes(o.accountId));
     return `<tr><td class="primary">${t.name}</td><td class="num">${os.length}</td><td class="num">${os.filter(o=>o.oppId).length} / ${os.filter(o=>!o.oppId).length}</td><td class="mono" style="text-align:right">${fmtTotals(sumByCurrency(os))}</td></tr>`; }).join('');
 
   return `
@@ -884,7 +896,7 @@ function dashMgmt(){
       <div class="list">${probs.map(p => problemItem(p,{team:true})).join('') || '<div class="empty">No unresolved problems.</div>'}</div></section>
     <section class="card"><div class="card-head"><h2>Recorded orders</h2><span class="faint" style="font-size:12px">Totals by currency</span></div>
       <div class="table-wrap"><table class="data"><thead><tr><th>Team</th><th>Orders</th><th>Linked / account-level</th><th style="text-align:right">Total value</th></tr></thead>
-      <tbody>${orderRows}<tr><td class="primary">All teams</td><td class="num">${DB.orders.length}</td><td class="num">${DB.orders.filter(o=>o.oppId).length} / ${DB.orders.filter(o=>!o.oppId).length}</td><td class="mono" style="text-align:right;font-weight:600">${fmtTotals(sumByCurrency(DB.orders))}</td></tr></tbody></table></div>
+      <tbody>${orderRows}<tr><td class="primary">All teams</td><td class="num">${visOrders.length}</td><td class="num">${visOrders.filter(o=>o.oppId).length} / ${visOrders.filter(o=>!o.oppId).length}</td><td class="mono" style="text-align:right;font-weight:600">${fmtTotals(sumByCurrency(visOrders))}</td></tr></tbody></table></div>
       <div class="card-body"><p class="sub" style="margin:0">Manually recorded orders. Currencies are not converted, so totals are shown per currency.</p></div></section>
   </div>`;
 }
@@ -900,7 +912,7 @@ function dashSales(){
     return `<div class="li" data-act="open" data-arg="opp:${o.id}" tabindex="0" role="link"><div class="date"><div>${fdShort(o.date)}</div><div class="faint" style="font-size:11px">${-dd(o.date)} days open</div></div>
       <div style="min-width:0"><div class="title">${esc(o.name)}</div><div class="desc">${esc(a.name)} · ${ns} sample request${ns===1?'':'s'}</div></div><div class="side-act">${pill('Open')}</div></div>`; }).join('');
   return `
-  <div class="page-head"><div><h1>${t.name}</h1><p class="sub">${esc(peopleShareText(t))} share these records and next contacts.</p></div>
+  <div class="page-head"><div><h1>${t.name}</h1><p class="sub">${t.sandbox ? 'Fake account and opportunity for testing. Work through any flow here exactly as Sales would.' : `${esc(peopleShareText(t))} share these records and next contacts.`}</p></div>
     <div class="actions"><button class="btn btn-primary" data-act="modal" data-arg="newaccount">${I.plus}New account</button></div></div>
   <div class="kpis">
     <div class="kpi ${overdue.length?'alert':''}"><span class="k-label">Overdue account contacts</span><span class="k-val">${overdue.length}</span><span class="k-note">Next contact date has passed</span></div>
@@ -922,7 +934,7 @@ function viewLeads(){
   const rows = base.filter(l => (!f.status || l.status===f.status) && (!f.source || l.source===f.source) &&
     (!q || [l.company,l.contactName,countryName(l.country),l.email].join(' ').toLowerCase().includes(q))).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
   const c = s => base.filter(l => l.status===s).length;
-  const segs = [['','All'], ...(isV() ? [[PENDING,`Pending ${c(PENDING)}`]] : []), ['Qualified','Qualified'], ...(isV() ? [['Not Qualified','Not qualified'], ['Duplicate',`Duplicate ${c('Duplicate')}`]] : [])];
+  const segs = [['','All'], ...(isV() ? [[PENDING,`Pending ${c(PENDING)}`]] : []), ['Qualified','Qualified'], ...(isV() ? [['Not Qualified','Not qualified']] : [])];
   const body = rows.map(l => { const dup = duplicateOf(l.company), pending = l.status===PENDING;
     const action = canMgmtQualify(l) || canSalesQualify(l) ? `<button class="btn btn-sm btn-primary" data-act="modal" data-arg="leadview:${l.id}">Qualify</button>`
       : canMgmtReassign(l) ? `<button class="btn btn-sm" data-act="modal" data-arg="leadview:${l.id}">Reassign</button>`
@@ -978,7 +990,7 @@ function viewAccounts(){
     <div class="toolbar">
       <div class="search">${I.search}<input id="aq" data-filter="accounts.q" value="${esc(f.q)}" placeholder="Search account, country, source, contact" aria-label="Search accounts"></div>
       <div class="seg" role="group" aria-label="Status">${[['','All'],['Active','Active'],['Inactive','Inactive']].map(([v,l]) => `<button data-act="filter" data-arg="accounts.status:${v}" aria-pressed="${f.status===v}">${l}</button>`).join('')}</div>
-      ${isV() ? `<select id="ateam" data-filter="accounts.team" aria-label="Team"><option value="">All teams</option>${DB.teams.map(t => `<option value="${t.id}" ${f.team===t.id?'selected':''}>${t.name}</option>`).join('')}</select>` : ''}
+      ${isV() ? `<select id="ateam" data-filter="accounts.team" aria-label="Team"><option value="">All teams</option>${realTeams().map(t => `<option value="${t.id}" ${f.team===t.id?'selected':''}>${t.name}</option>`).join('')}</select>` : ''}
       <span class="count">${rows.length} accounts</span>
     </div>
     <div class="table-wrap"><table class="data"><thead><tr><th>ID</th><th>Account</th><th>Country</th><th>Source</th>${isV()?'<th>Team</th>':''}<th>Status</th><th>Open / all opps</th><th>Next contact</th></tr></thead>
@@ -1146,7 +1158,7 @@ function viewOpps(){
     <div class="toolbar">
       <div class="search">${I.search}<input id="oq" data-filter="opps.q" value="${esc(f.q)}" placeholder="Search opportunity, account, ID" aria-label="Search opportunities"></div>
       <div class="seg" role="group" aria-label="Status">${[['','All'],['Open',`Open ${c('Open')}`],['Won',`Won ${c('Won')}`],['Lost',`Lost ${c('Lost')}`]].map(([v,l]) => `<button data-act="filter" data-arg="opps.status:${v}" aria-pressed="${f.status===v}">${l}</button>`).join('')}</div>
-      ${isV() ? `<select id="oteam" data-filter="opps.team" aria-label="Team"><option value="">All teams</option>${DB.teams.map(t => `<option value="${t.id}" ${f.team===t.id?'selected':''}>${t.name}</option>`).join('')}</select>` : ''}
+      ${isV() ? `<select id="oteam" data-filter="opps.team" aria-label="Team"><option value="">All teams</option>${realTeams().map(t => `<option value="${t.id}" ${f.team===t.id?'selected':''}>${t.name}</option>`).join('')}</select>` : ''}
       <span class="count">${rows.length} of ${all.length}</span>
     </div>
     ${oppTable(rows)}
@@ -1352,28 +1364,28 @@ function modalHTML(){
       <div class="infobox"><b style="color:var(--fg)">Customer needs:</b> ${esc(l.needs||'—')}</div>`;
     if(canMgmtQualify(l) || canSalesQualify(l)){
       const dupLead = leadDuplicateOf(l);
-      const cur = v.decision || (dup || dupLead ? 'Duplicate' : '');
-      if(dup) body += `<div class="warnbox"><b>Duplicate account.</b> ${esc(l.company)} matches account ${dup.id} · ${esc(dup.name)} (${team(dup.teamId).name}). A second account cannot be created. Resolve this lead as a duplicate.</div>`;
+      const cur = v.decision || (dup || dupLead ? 'Not Qualified' : '');
+      const reason = v['f-reason'] ?? (dup || dupLead ? 'Duplicate' : '');
+      if(dup) body += `<div class="warnbox"><b>Duplicate account.</b> ${esc(l.company)} matches account ${dup.id} · ${esc(dup.name)} (${team(dup.teamId).name}). A second account cannot be created. Mark it Not qualified, reason Duplicate.</div>`;
       else if(dupLead) body += `<div class="warnbox"><b>Possible duplicate lead.</b> ${esc(l.company)} matches lead ${dupLead.id} (${esc(dupLead.status)}).</div>`;
       body += `<div class="field"><label>Decision<span class="req">*</span></label><div class="radio-row">
           <label><input type="radio" name="decision" value="Qualified" ${cur==='Qualified'?'checked':''} ${dup?'disabled':''} data-act-change="decision"><span>${isM() ? 'Qualified, assign to a sales team' : 'Qualified, create account for my team'}</span></label>
           <label><input type="radio" name="decision" value="Not Qualified" ${cur==='Not Qualified'?'checked':''} data-act-change="decision"><span>Not qualified</span></label>
-          ${isM() ? `<label><input type="radio" name="decision" value="Duplicate" ${cur==='Duplicate'?'checked':''} data-act-change="decision"><span>Duplicate</span></label>` : ''}</div></div>
-        ${cur==='Not Qualified' ? field('f-reason','Reason', `<select id="f-reason" name="f-reason" data-act-change="decision"><option value="">Select…</option>${opt(NQ_REASONS, v['f-reason']||'')}</select>`, {req:true}) : ''}
-        ${cur==='Duplicate' ? field('f-dupof','Duplicate of', `<select id="f-dupof" name="f-dupof"><option value="">Select…</option>
+          </div></div>
+        ${cur==='Not Qualified' ? field('f-reason','Reason', `<select id="f-reason" name="f-reason" data-act-change="decision"><option value="">Select…</option>${opt(NQ_REASONS, reason)}</select>`, {req:true}) : ''}
+        ${cur==='Not Qualified' && reason==='Duplicate' ? field('f-dupof','Duplicate of', `<select id="f-dupof" name="f-dupof"><option value="">Select…</option>
             <optgroup label="Existing accounts">${opt([...DB.accounts].sort((x,y) => x.name.localeCompare(y.name)).map(a => [`account:${a.id}`, `${a.name} (${a.id})`]), v['f-dupof'] ?? (dup ? `account:${dup.id}` : ''))}</optgroup>
-            <optgroup label="Existing leads">${opt(DB.leads.filter(x => x.id!==l.id && x.status!=='Duplicate').map(x => [`lead:${x.id}`, `${x.company} (${x.id}, ${x.status})`]), v['f-dupof'] ?? (!dup && dupLead ? `lead:${dupLead.id}` : ''))}</optgroup></select>`, {req:true, full:true}) : ''}
+            <optgroup label="Existing leads">${opt(DB.leads.filter(x => x.id!==l.id && !isDupLead(x)).map(x => [`lead:${x.id}`, `${x.company} (${x.id}, ${x.status})`]), v['f-dupof'] ?? (!dup && dupLead ? `lead:${dupLead.id}` : ''))}</optgroup></select>`, {req:true, full:true}) : ''}
         ${cur==='Qualified' ? field('f-assess','Assessment', ta('f-assess', v['f-assess']), {req:true, full:true, hint:'company identity, business fit, customer needs'})
-          : cur==='Not Qualified' ? field('f-assess','Comment', ta('f-assess', v['f-assess']), {req:v['f-reason']==='Other', full:true, hint: v['f-reason']==='Other' ? 'required: explain the reason' : 'optional'})
-          : cur==='Duplicate' ? field('f-assess','Comment', ta('f-assess', v['f-assess']), {full:true, hint:'optional'}) : ''}
-        ${cur==='Duplicate' ? `<div class="infobox">Links this lead to the existing record. No account is created, and the lead is left out of the qualification rate. The original submission and its history are kept.</div>` : ''}
-        ${cur==='Qualified' && isM() ? field('f-team','Sales team that will own the account', sel('f-team', DB.teams.map(t => [t.id,t.name]), v['f-team'] ?? ''), {req:true}) : ''}
+          : cur==='Not Qualified' ? field('f-assess','Comment', ta('f-assess', v['f-assess']), {req:reason==='Other', full:true, hint: reason==='Other' ? 'required: explain the reason' : 'optional'}) : ''}
+        ${cur==='Not Qualified' && reason==='Duplicate' ? `<div class="infobox">Links this lead to the existing record. No account is created, and the lead is left out of the qualification rate. The original submission and its history are kept.</div>` : ''}
+        ${cur==='Qualified' && isM() ? field('f-team','Sales team that will own the account', sel('f-team', realTeams().map(t => [t.id,t.name]), v['f-team'] ?? ''), {req:true}) : ''}
         ${cur==='Qualified' ? `<div class="infobox">Creates an account with source "${esc(l.source)}" for the selected team. The lead contact becomes its first contact. No next contact is set. Recorded as created by ${esc(byText(u))}.</div>` : ''}
 `;
       submit = 'Save decision';
     } else if(canMgmtReassign(l)){
       body += `<div class="infobox">Submitted by ${esc(team(l.teamId).name)}. That team qualifies it. Reassign only when another team should own it.</div>
-        ${field('f-team','Reassign to sales team', sel('f-team', DB.teams.map(t => [t.id,t.name]), v['f-team'] ?? l.teamId), {req:true})}`;
+        ${field('f-team','Reassign to sales team', sel('f-team', realTeams().map(t => [t.id,t.name]), v['f-team'] ?? l.teamId), {req:true})}`;
       submit = 'Reassign team';
     } else {
       body += `<div class="kv">
@@ -1531,17 +1543,9 @@ function handleSubmit(formType, v, rows){
     if(!canMgmtQualify(l) && !canSalesQualify(l)) return fail('You do not have permission to qualify or assign this lead.');
     if(!v.decision) return fail('Choose a decision.');
     const note = (v['f-assess']||'').trim();
-    if(v.decision==='Duplicate'){
-      if(!isM()) return fail('Only Management resolves duplicates.');
-      const [t, tid] = (v['f-dupof']||'').split(':');
-      if(!tid || (t==='account' ? !acc(tid) : !lead(tid) || tid===l.id)) return fail('Choose the existing account or lead this duplicates.');
-      Object.assign(l, { status:'Duplicate', duplicateOf:{ type:t, id:tid }, assessment:note, resolvedBy:u, resolvedAt:TODAY_STR });
-      l.history.push({ at:TODAY_STR, by:u, action:`Resolved as duplicate of ${t} ${tid}` });
-      S.modal = null; toast(`${l.id} resolved as a duplicate of ${t} ${tid}. No account created.`); return render();
-    }
     if(v.decision==='Qualified'){
       if(!note) return fail('Add a short assessment.');
-      const dup = duplicateOf(l.company); if(dup) return fail(`Account ${dup.id} already exists for this company. Resolve this lead as a duplicate.`);
+      const dup = duplicateOf(l.company); if(dup) return fail(`Account ${dup.id} already exists for this company. Mark this lead Not qualified, reason Duplicate.`);
       if(isM()){
         if(!v['f-team']) return fail('Choose the sales team that will own the account.');
         Object.assign(l, { teamId:v['f-team'], assignedBy:u, assignedAt:TODAY_STR });
@@ -1552,9 +1556,15 @@ function handleSubmit(formType, v, rows){
     }
     if(!NQ_REASONS.includes(v['f-reason'])) return fail('Choose a reason.');
     if(v['f-reason']==='Other' && !note) return fail('Explain the reason when Other is selected.');
-    Object.assign(l, { status:'Not Qualified', reason:v['f-reason'], assessment:note, qualifiedBy:u, qualifiedAt:TODAY_STR });
-    l.history.push({ at:TODAY_STR, by:u, action:`Not qualified: ${v['f-reason']}` });
-    S.modal = null; toast(`${l.id} marked Not qualified (${v['f-reason']}).`); return render();
+    let dupLink = null;
+    if(v['f-reason']==='Duplicate'){
+      const [t, tid] = (v['f-dupof']||'').split(':');
+      if(!tid || (t==='account' ? !acc(tid) : !lead(tid) || tid===l.id)) return fail('Choose the existing account or lead this duplicates.');
+      dupLink = { type:t, id:tid };
+    }
+    Object.assign(l, { status:'Not Qualified', reason:v['f-reason'], assessment:note, qualifiedBy:u, qualifiedAt:TODAY_STR, ...(dupLink ? { duplicateOf:dupLink } : {}) });
+    l.history.push({ at:TODAY_STR, by:u, action:nqText(l) });
+    S.modal = null; toast(`${l.id} marked Not qualified (${v['f-reason']}${dupLink ? ` of ${dupLink.type} ${dupLink.id}` : ''}). No account created.`); return render();
   }
   if(type==='newaccount'){
     if(!req(v,['f-company','f-source'])) return fail('Company name and account source are required.');
@@ -1706,6 +1716,8 @@ document.addEventListener('change', e => {
   if(t.id==='f-currency' && t.form) { updateTotals(t.form); return; }
   const a = t.dataset.actChange;
   if(a==='role'){ S.role = t.value; S.modal = null; S.view = { submitter:'submit', admin:'admin' }[t.value] || 'dashboard'; S.id = null; S.f.leads.status = '';
+    if(t.value==='admin') S.teamId = sandboxTeam()?.id || S.teamId;
+    if(t.value==='sales' && team(S.teamId)?.sandbox) S.teamId = realTeams()[0].id;
     if(t.value==='sales'){ const mg = teamMembers(S.teamId).find(p => p.role==='sales_manager') || teamMembers(S.teamId)[0]; S.member = String(mg?.id || ''); } render(); }
   if(a==='team'){ S.teamId = t.value; S.modal = null; if(['account','opp'].includes(S.view)) S.view = 'dashboard';
     const mg = teamMembers(S.teamId).find(p => p.role==='sales_manager') || teamMembers(S.teamId)[0]; S.member = String(mg?.id || ''); render(); }
@@ -1825,6 +1837,7 @@ async function initStorage(){
     TABLES.forEach(t => { const d = byName[t].exists ? byName[t].data() : null;
       if(d && Array.isArray(d.rows)){ DB[t] = clone(d.rows); STORE.last[t] = JSON.stringify(DB[t]); } });
     // A table that was never saved (interrupted first save) keeps the demo rows and is written below; existing tables are untouched.
+    DB.leads.forEach(l => { if(l.status==='Duplicate'){ Object.assign(l, { status:'Not Qualified', reason:'Duplicate', qualifiedBy:l.resolvedBy, qualifiedAt:l.resolvedAt }); } });   // saved before v1.3
     STORE.active = true; S.modal = null; render();
     const missing = TABLES.filter(t => !(t in STORE.last));
     if(missing.length) await persist(); else setStatus('saved');
@@ -1931,7 +1944,7 @@ async function sbLoadAll(){
     'Assigned':`Assigned to ${teamName(e.team_id)}`,
     'Reassigned':`Reassigned from ${teamName(e.from_team_id)} to ${teamName(e.team_id)}`,
     'Qualified':`Qualified. Account ${e.account_id} created for ${teamName(e.team_id)}`,
-    'Not Qualified':`Not qualified: ${e.not_qualified_reason}`,
+    'Not Qualified':e.not_qualified_reason==='Duplicate' ? `Not qualified: Duplicate of ${e.duplicate_of_account_id ? 'account ' + e.duplicate_of_account_id : 'lead ' + e.duplicate_of_lead_id}` : `Not qualified: ${e.not_qualified_reason}`,
     'Duplicate Resolved':`Resolved as duplicate of ${e.duplicate_of_account_id ? 'account ' + e.duplicate_of_account_id : 'lead ' + e.duplicate_of_lead_id}`,
   }[e.event_type] || e.event_type);
   DB.leads = leads.map(l => {
@@ -1981,9 +1994,8 @@ async function sbPush(B){
       throw new Error('Reassigning a pending lead is not available in the connected version. Qualify it and choose the team instead.');
     if(o.status==='Pending Qualification' && l.status!=='Pending Qualification'){
       if(l.status==='Qualified'){ const acc = await rpc('qualify_lead', { p_lead_id:l.id, p_team_id:l.teamId, p_assessment:l.assessment, p_normalized_name:norm(l.company) }); if(l.accountId) idMap[l.accountId] = acc; }
-      else if(l.status==='Not Qualified') await rpc('not_qualify_lead', { p_lead_id:l.id, p_reason:l.reason, p_comment:l.assessment || null });
-      else if(l.status==='Duplicate') await rpc('resolve_lead_duplicate', { p_lead_id:l.id,
-        p_account_id: l.duplicateOf?.type==='account' ? l.duplicateOf.id : null, p_duplicate_lead_id: l.duplicateOf?.type==='lead' ? l.duplicateOf.id : null, p_comment:l.assessment || null });
+      else if(l.status==='Not Qualified') await rpc('not_qualify_lead', { p_lead_id:l.id, p_reason:l.reason, p_comment:l.assessment || null,
+        p_duplicate_account_id: l.duplicateOf?.type==='account' ? l.duplicateOf.id : null, p_duplicate_lead_id: l.duplicateOf?.type==='lead' ? l.duplicateOf.id : null });
     }
   }
   // Accounts (Path B direct creation, edits, next contact) with their addresses and contacts
@@ -2054,9 +2066,9 @@ async function sbSync(before){
     SB.busy = false; setStatus('live'); render();
   } catch(e){
     console.warn('Supabase save failed', e);
-    SB.error = friendlyError(e); SB.busy = false;
+    SB.error = friendlyError(e);
     try { await sbLoadAll(); } catch(_){}   // show what the database really holds
-    setStatus('failed'); render(); toast(`Not saved: ${SB.error}`);
+    SB.busy = false; setStatus('failed'); render(); toast(`Not saved: ${SB.error}`);
   }
 }
 
@@ -2088,7 +2100,6 @@ function loginHTML(){
     <button class="btn btn-primary login-btn" type="submit" id="login-submit">Sign in</button>
     <div class="login-alt"><button type="button" class="btn-link" data-act="forgot">Forgot password?</button></div>
     <div class="login-alt"><span class="faint">No account?</span> <button type="button" class="btn-link" data-act="demomode">Explore with demo data</button></div>
-    <p class="faint login-proj">Accounts are created by your administrator. Supabase project: <span class="mono">${esc(PROJECT_REF)}</span></p>
   </form></div>`;
 }
 async function sbSignIn(email, password){
@@ -2136,6 +2147,7 @@ async function sbConnect(session){
   S.role = role; S.teamId = mt?.team_id || 'T1'; S.member = String(me.user_id);
   S.view = role==='submitter' ? 'submit' : role==='admin' ? 'admin' : 'dashboard'; S.id = null; S.modal = null; S.open = {};
   await sbLoadAll();
+  if(role==='admin'){ S.teamId = sandboxTeam()?.id || ''; SB.me.team_id = S.teamId; }
   MODE = 'supabase'; STORE.active = false; setStatus('live'); render();
 }
 async function sbSignOut(){
@@ -2241,7 +2253,7 @@ const meId = () => isLive() ? SB.me?.user_id : ({ admin:10, mgmt:1, submitter:2 
 const me = () => person(meId());
 const isMgr = () => isS() && me()?.role==='sales_manager';
 const roleSel = (id, v, disabled=false) => `<select id="${id}" name="${id}" data-act-change="pmrole" ${disabled?'disabled':''}><option value="">Select…</option>${opt(ASSIGNABLE_ROLES.map(r => [r, ROLE_NAMES[r]]), v)}</select>`;
-const teamSel = (id, v, list = DB.teams.filter(t => t.status!=='Inactive')) => sel(id, list.map(t => [t.id, t.name]), v);
+const teamSel = (id, v, list = realTeams().filter(t => t.status!=='Inactive')) => sel(id, list.map(t => [t.id, t.name]), v);
 const simNote = () => isLive() ? '' : `<div class="infobox sim-box">${I.warn}<span><b>Simulated.</b> In demo mode these screens show how user administration works. Nothing here is real security and changes are not saved.</span></div>`;
 
 /* ----- Demo implementations (same rules as the database functions) ----- */
@@ -2405,7 +2417,7 @@ function viewMyTeam(){
 }
 
 function viewTeams(){
-  const rows = DB.teams.map(t => { const ms = teamMembers(t.id), ac = DB.accounts.filter(a => a.teamId===t.id && a.status==='Active').length;
+  const rows = realTeams().map(t => { const ms = teamMembers(t.id), ac = DB.accounts.filter(a => a.teamId===t.id && a.status==='Active').length;
     return `<tr${isA() ? ` class="row" data-act="modal" data-arg="pm-team:${t.id}" tabindex="0"` : ''}><td><div class="primary">${esc(t.name)}</div><div class="secondary mono">${t.id}</div></td><td>${pill(t.status)}</td><td>${esc(t.manager)}</td>
       <td>${(t.executives||[]).map(esc).join(', ') || '<span class="faint">None</span>'}</td><td class="num">${ms.length}</td><td class="num">${ac}</td>${isA() ? `<td class="r"><button class="btn btn-sm" data-act="modal" data-arg="pm-team:${t.id}">Manage</button></td>` : ''}</tr>`; }).join('');
   const table = `<div class="table-wrap"><table class="data"><thead><tr><th>Team</th><th>Status</th><th>Sales Manager</th><th>Sales Executives</th><th>Members</th><th>Active accounts</th>${isA() ? '<th></th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -2417,7 +2429,7 @@ function viewTeams(){
 function viewAdmin(){
   const tab = S.atab || 'users', f = S.af || (S.af = { q:'', status:'', role:'' });
   const P = DB.people.filter(p => p.role!=='system_intake'), pend = DB.requests.filter(q => q.status==='Pending');
-  const tabs = [['users','Users',P.length],['requests','Access requests',pend.length],['teams','Sales teams',DB.teams.length],['history','History',DB.audit.length]];
+  const tabs = [['users','Users',P.length],['requests','Access requests',pend.length],['teams','Sales teams',realTeams().length],['history','History',DB.audit.length]];
   let body = '';
   if(tab==='users'){
     const qf = foldTxt(f.q), list = P.filter(p => (!f.status || p.status===f.status) && (!f.role || p.role===f.role) && (!qf || foldTxt(p.name+' '+p.email).includes(qf)))
@@ -2503,7 +2515,7 @@ function peopleModal(type, args, v){
       ${fixedField('Requested role','Sales Executive', false)}${fixedField('Sales team', esc(t?.name||''), false)}${field('f-rnote','Note', ta('f-rnote', v['f-rnote']), { full:true })}</div>` };
     const p = person(uid);
     return { title:`Request ${kind.toLowerCase()}: ${p.name}`, sub: kind==='Remove' ? 'If Admin approves, the person leaves the team and loses access. Their records stay.' : 'If Admin approves, the person moves to the other team with no access to your team\'s records.',
-      submit:'Send request', danger: kind==='Remove', body:`<div class="fields">${kind==='Transfer' ? field('f-rto','Move to team', teamSel('f-rto', v['f-rto'] || '', DB.teams.filter(x => x.status!=='Inactive' && x.id!==t.id)), { req:true }) : ''}
+      submit:'Send request', danger: kind==='Remove', body:`<div class="fields">${kind==='Transfer' ? field('f-rto','Move to team', teamSel('f-rto', v['f-rto'] || '', realTeams().filter(x => x.status!=='Inactive' && x.id!==t.id)), { req:true }) : ''}
       ${field('f-rnote','Note', ta('f-rnote', v['f-rnote']), { full:true })}</div>` }; }
   if(type==='pm-approve' || type==='pm-reject'){ const q = DB.requests.find(r => r.id===+args[0]), ex = q && DB.people.find(p => p.email && p.email.toLowerCase()===String(q.email).toLowerCase());
     const what = q.type==='Add' ? (ex ? `${esc(ex.name)} already has an account (${ROLE_NAMES[ex.role]}, ${ex.status}). Approving moves them into ${esc(team(q.teamId)?.name||'')} as Sales Executive.`
@@ -2586,7 +2598,7 @@ async function sbLoadPeople(c, role){
   const [dir, users, teams, members, reqs, audit] = await Promise.all([
     role==='lead_submitter' ? empty : q(c.rpc('user_directory')),
     q(c.from('users').select('user_id,full_name,email,role_id,account_status,job_title,phone,created_at,last_login_at')),
-    role==='lead_submitter' ? empty : q(c.from('sales_teams').select('team_id,team_name,team_status').order('team_id')),
+    role==='lead_submitter' ? empty : q(c.from('sales_teams').select('team_id,team_name,team_status,is_sandbox').order('team_id')),
     q(c.from('team_memberships').select('*').order('membership_id')),
     ['admin','sales_manager'].includes(role) ? q(c.from('user_access_requests').select('*').order('request_id')) : empty,
     role==='admin' ? q(c.from('audit_logs').select('*').order('log_id', { ascending:false }).limit(1000)) : empty,
@@ -2598,7 +2610,7 @@ async function sbLoadPeople(c, role){
       createdAt:u?.created_at || '', lastLogin:u?.last_login_at || '', partial:!u }; });
   SB.users = Object.fromEntries(DB.people.map(p => [p.id, { full_name:p.name, role:p.role }]));
   DB.memberships = members.map(m => ({ id:m.membership_id, userId:m.user_id, teamId:m.team_id, status:m.membership_status, start:m.start_date, end:m.end_date || '' }));
-  DB.teams = teams.map(t => ({ id:t.team_id, name:t.team_name, status:t.team_status }));
+  DB.teams = teams.map(t => ({ id:t.team_id, name:t.team_name, status:t.team_status, sandbox:!!t.is_sandbox }));
   DB.requests = reqs.map(r => ({ id:r.request_id, type:r.request_type, name:r.employee_name || '', email:r.employee_email || '', targetId:r.target_user_id, teamId:r.requested_team_id,
     fromTeamId:r.from_team_id, note:r.note || '', by:r.requested_by_user_id, reviewer:r.reviewed_by_user_id, status:r.request_status, reason:r.rejection_reason || '',
     resultId:r.resulting_user_id, createdAt:r.created_at, reviewedAt:r.reviewed_at || '' }));
